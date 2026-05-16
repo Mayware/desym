@@ -1,0 +1,8 @@
+.vscode
+.direnv
+.envrc
+shell.nix
+
+# Added by cargo
+
+/target
