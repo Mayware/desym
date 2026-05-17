@@ -32,7 +32,10 @@ struct Config {
     settings: Settings,
 }
 
-#[derive(Default, Debug, Deserialize, JsonSchema, Clone)]
+// Kinda annoying pattern of default for individual fields, and a default function
+// We need to do this however because the impl Default is for Settings from nothing
+// whereas the individual fields is for JsonSchema to be able to construct it from partial
+#[derive(Debug, Deserialize, JsonSchema, Clone)]
 struct Settings {
     #[serde(default = "default_true")]
     add_path_confirmation: bool,
@@ -40,6 +43,17 @@ struct Settings {
     remove_path_confirmation: bool,
     cache_path: Option<String>,
 }
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            add_path_confirmation: true,
+            remove_path_confirmation: true,
+            cache_path: None,
+        }
+    }
+}
+
 fn default_true() -> bool {
     true
 }

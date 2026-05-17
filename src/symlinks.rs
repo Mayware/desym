@@ -50,7 +50,7 @@ pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
             let base_path = Path::new(&entry.source);
 
             if let Some(metadata) =
-                utils::get_matching_metadata(&symlink_path, entry.uid, entry.gid, entry.mode)
+                utils::get_matching_metadata(&symlink_path, entry.uid, entry.gid)
                     .await?
             {
                 if metadata.is_symlink() {

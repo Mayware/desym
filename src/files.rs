@@ -36,7 +36,7 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
             let source_content = tokio::fs::read(entry.source).await?;
 
             if let Some(metadata) =
-                utils::get_matching_metadata(file_path, entry.uid, entry.gid, entry.mode).await?
+                utils::get_matching_metadata(file_path, entry.uid, entry.gid).await?
             {
                 if metadata.is_file() {
                     let file_content = tokio::fs::read(file_path).await?;

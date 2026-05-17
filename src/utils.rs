@@ -34,7 +34,6 @@ pub async fn get_matching_metadata(
     path: &Path,
     uid: u32,
     gid: u32,
-    mode: u32,
 ) -> Result<Option<Metadata>> {
     match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) => Ok(Some(metadata)),
@@ -42,7 +41,7 @@ pub async fn get_matching_metadata(
             // Check if parent directories also need creation
             let needs_parent = path.parent().map(|p| !p.exists()).unwrap_or(false);
             if needs_parent {
-                create_path(path.parent().unwrap(), uid, gid, mode).await?;
+                create_path(path.parent().unwrap(), uid, gid).await?;
             }
             Ok(None)
         }
@@ -56,7 +55,7 @@ pub async fn get_matching_metadata(
     }
 }
 
-pub async fn create_path(path: &Path, uid: u32, gid: u32, mode: u32) -> Result<()> {
+pub async fn create_path(path: &Path, uid: u32, gid: u32) -> Result<()> {
     let confirmation = !settings().add_path_confirmation
         || get_confirmation(
             format!(
@@ -86,8 +85,8 @@ pub async fn create_path(path: &Path, uid: u32, gid: u32, mode: u32) -> Result<(
         match tokio::fs::DirBuilder::new()
             // Always have the executable bits for owner/group on the directory, so it is
             // traversable. Although hardcoding it isn't ideal, we can't infer from the actual
-            // target mode
-            .mode(mode | 0o110) 
+            // target mode. Update - just don't inherit the mode
+            // .mode(mode | 0o110)
             .create(&current)
             .await
         {
@@ -166,7 +165,7 @@ pub async fn get_confirmation(message: &str) -> bool {
     let input = input()
         .prompt(
             format!(
-                "{} {} [Y/n]",
+                "{} {} [Y/n] ",
                 "[CONFIRM]".bright_purple().to_string().as_str(),
                 message
             )
@@ -175,7 +174,7 @@ pub async fn get_confirmation(message: &str) -> bool {
         .await;
 
     match input.trim().to_lowercase().as_str() {
-        "y" | "yes" => {
+        "y" | "yes" | "" => {
             return true;
         }
         "n" | "no" => {
