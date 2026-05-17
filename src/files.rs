@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Result, anyhow};
 use tokio::task::JoinSet;
 
-async fn write_file(path: &Path, content: Vec<u8>, uid: u32, gid: u32, mode: u32) -> Result<()> {
+async fn write_file(path: &Path, content: &[u8], uid: u32, gid: u32, mode: u32) -> Result<()> {
     match fs::write(path, content) {
         Ok(_) => {
             utils::raw_chown(path, uid, gid).await?;
@@ -33,8 +33,6 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
     for (file_path, entry) in files {
         set.spawn(async move {
             let file_path = Path::new(&file_path);
-            let source_content = tokio::fs::read(entry.source).await?;
-
             if let Some(metadata) =
                 utils::get_matching_metadata(file_path, entry.uid, entry.gid).await?
             {
@@ -42,7 +40,7 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
                     let file_content = tokio::fs::read(file_path).await?;
 
                     // No-op if everything matches
-                    if source_content == file_content
+                    if entry.source.as_bytes() == file_content
                         && metadata.uid() == entry.uid
                         && metadata.gid() == entry.gid
                         && metadata.mode() == entry.mode
@@ -54,7 +52,7 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
                 utils::remove_path(file_path).await?;
             }
 
-            write_file(file_path, source_content, entry.uid, entry.gid, entry.mode).await?;
+            write_file(file_path, entry.source.as_bytes(), entry.uid, entry.gid, entry.mode).await?;
             Ok(())
         });
     }

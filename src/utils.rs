@@ -30,11 +30,7 @@ pub fn input() -> &'static Input {
 // Returns the Some(Metadata) if the file exists, returns None if the file didn't exist, and errors
 // upon any other error. The caller then can put specific logic for if the file exists, and to
 // verify it is still valid
-pub async fn get_matching_metadata(
-    path: &Path,
-    uid: u32,
-    gid: u32,
-) -> Result<Option<Metadata>> {
+pub async fn get_matching_metadata(path: &Path, uid: u32, gid: u32) -> Result<Option<Metadata>> {
     match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) => Ok(Some(metadata)),
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -155,6 +151,13 @@ async fn print(prefix: &str, message: &str) {
 
 pub async fn print_err(message: &str) {
     print("[ERROR]".red().to_string().as_str(), message).await;
+}
+
+pub async fn print_real_err(err: &anyhow::Error) {
+    print_err(err.to_string().as_str()).await;
+    for cause in err.chain().skip(1) {
+        print("[CAUSE]".red().to_string().as_str(), &cause.to_string()).await;
+    }
 }
 
 pub async fn print_suc(message: &str) {

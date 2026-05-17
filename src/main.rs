@@ -147,6 +147,6 @@ async fn main() {
     .await;
 
     if let Err(err) = result {
-        utils::print_err(err.to_string().as_str()).await;
+        utils::print_real_err(&err).await;
     }
 }
