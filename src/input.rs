@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -40,6 +40,7 @@ impl Input {
     pub async fn prompt(&self, prompt: &str) -> String {
         let _ = self.lock.lock().await;
         print!("{}", prompt);
+        io::stdout().flush().unwrap();
 
         let (tx, rx) = oneshot::channel();
         self.input_tx.send(tx).await.unwrap();

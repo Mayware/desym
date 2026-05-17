@@ -42,7 +42,7 @@ pub async fn get_matching_metadata(
             // Check if parent directories also need creation
             let needs_parent = path.parent().map(|p| !p.exists()).unwrap_or(false);
             if needs_parent {
-                create_path(path, uid, gid, mode).await?;
+                create_path(path.parent().unwrap(), uid, gid, mode).await?;
             }
             Ok(None)
         }
@@ -84,7 +84,10 @@ pub async fn create_path(path: &Path, uid: u32, gid: u32, mode: u32) -> Result<(
         }
 
         match tokio::fs::DirBuilder::new()
-            .mode(mode)
+            // Always have the executable bits for owner/group on the directory, so it is
+            // traversable. Although hardcoding it isn't ideal, we can't infer from the actual
+            // target mode
+            .mode(mode | 0o110) 
             .create(&current)
             .await
         {

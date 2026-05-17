@@ -14,8 +14,9 @@ async fn create_symlink(symlink_path: &Path, entry: Entry) -> Result<()> {
         Ok(()) => {
             // Apparently the symlink file permissions don't matter, on unixes apart from MacOS
             // but can't hurt to be consistent
-            utils::raw_chown(symlink_path, entry.uid, entry.gid).await?;
-            utils::raw_chmod(symlink_path, entry.mode).await?;
+            // It cries on linux, so i've vaulted it
+            // utils::raw_chown(symlink_path, entry.uid, entry.gid).await?;
+            // utils::raw_chmod(symlink_path, entry.mode).await?;
 
             print_suc(
                 format!(
