@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::os::unix;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 use tokio::task::JoinSet;
@@ -14,7 +13,10 @@ async fn create_symlink(symlink_path: &Path, entry: Entry) -> Result<()> {
         Ok(()) => {
             // Apparently the symlink file permissions don't matter, on unixes apart from MacOS
             // but can't hurt to be consistent
-            // It cries on linux, so i've vaulted it
+            // I changed chmod from nofollow, to the regular one, since nofollow was erroring for
+            // a reason I couldn't find out - "must specify at least one of read, write, or append
+            // access", although I was chmodding it. Anyways, that means that we'd be chmodding the
+            // original file, and not the symlink, and hence the vault
             // utils::raw_chown(symlink_path, entry.uid, entry.gid).await?;
             // utils::raw_chmod(symlink_path, entry.mode).await?;
 

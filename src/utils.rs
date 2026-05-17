@@ -1,5 +1,5 @@
 use std::{
-    fs::{Metadata, Permissions, set_permissions_nofollow},
+    fs::{Metadata, Permissions},
     os::unix::fs::{PermissionsExt, lchown},
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Result, anyhow};
 
 use owo_colors::OwoColorize;
-use tokio::io;
+use tokio::{fs::set_permissions, io};
 
 use crate::{Settings, input::Input};
 
@@ -204,7 +204,7 @@ pub async fn raw_chown(path: &Path, uid: u32, gid: u32) -> Result<()> {
 }
 
 pub async fn raw_chmod(path: &Path, mode: u32) -> Result<()> {
-    if let Err(err) = set_permissions_nofollow(path, Permissions::from_mode(mode)) {
+    if let Err(err) = set_permissions(path, Permissions::from_mode(mode)).await {
         return Err(anyhow!(format!(
             "Failed to chmod {} as {}: {}",
             path.display(),
