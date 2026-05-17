@@ -42,6 +42,11 @@ async fn create_symlink(symlink_path: &Path, entry: Entry) -> Result<()> {
 }
 
 pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
+    // Please note, symlink permissions don't matter - I initially implemented them
+    // thinking linux would just ignore it, but no, it errors instead, so you'll see vaulted
+    // associated code pieces, but entry is still taken for one glorious day in the future
+    // where it may work.
+
     let mut set: JoinSet<Result<()>> = JoinSet::new();
 
     for (symlink_path, entry) in symlinks {
@@ -50,8 +55,7 @@ pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
             let base_path = Path::new(&entry.source);
 
             if let Some(metadata) =
-                utils::get_matching_metadata(&symlink_path, entry.uid, entry.gid)
-                    .await?
+                utils::get_matching_metadata(&symlink_path, entry.uid, entry.gid).await?
             {
                 if metadata.is_symlink() {
                     let link_target = tokio::fs::read_link(symlink_path).await?;
@@ -70,11 +74,7 @@ pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
                     };
 
                     // No-op if everything matches
-                    if resolved_target == base_path
-                        && metadata.uid() == entry.uid
-                        && metadata.gid() == entry.gid
-                        && metadata.mode() == entry.mode
-                    {
+                    if resolved_target == base_path {
                         return Ok(());
                     }
                 }

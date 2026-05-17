@@ -6,7 +6,7 @@ mod input;
 mod symlinks;
 mod utils;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::{collections::HashMap, env, os::unix::fs::MetadataExt};
@@ -65,7 +65,28 @@ impl Entry {
     // Inherit the uid/gid/mode of the source file, if it was left unset
     pub async fn resolve_defaults(&mut self) -> Result<()> {
         if self.uid == u32::MAX || self.gid == u32::MAX || self.mode == u32::MAX {
-            let metadata = tokio::fs::symlink_metadata(&self.source).await?;
+            let metadata = match tokio::fs::symlink_metadata(&self.source).await {
+                Ok(metadata) => metadata,
+                Err(err) => {
+                    return Err(anyhow!(
+                        "Failed to read metadata for resolve defaults for \n{}\nThe following fields were not specified: [{}]: {}\n{}\n{}",
+                        self.source,
+                        [
+                            (self.uid == u32::MAX, "uid"),
+                            (self.gid == u32::MAX, "gid"),
+                            (self.mode == u32::MAX, "mode"),
+                        ]
+                        .iter()
+                        .filter(|(needed, _)| *needed)
+                        .map(|(_, name)| *name)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                        err,
+                        "Commonly, this is for when creating an arbitrary files, since it is not possible to infer existing permissions.",
+                        "Please manually specify the required fields."
+                    ));
+                }
+            };
 
             if self.uid == u32::MAX {
                 self.uid = metadata.uid();
