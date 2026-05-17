@@ -43,7 +43,8 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
                     if entry.source.as_bytes() == file_content
                         && metadata.uid() == entry.uid
                         && metadata.gid() == entry.gid
-                        && metadata.mode() == entry.mode
+                        // Only check permission bits
+                        && (metadata.mode() & 0o777) == entry.mode
                     {
                         return Ok(());
                     }
