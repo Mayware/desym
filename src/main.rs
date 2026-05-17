@@ -1,5 +1,3 @@
-#![feature(set_permissions_nofollow)]
-
 mod cache;
 mod files;
 mod input;
