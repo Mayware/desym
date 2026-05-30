@@ -33,12 +33,12 @@ impl Input {
     }
 
     pub async fn println(&self, message: &str) {
-        let _ = self.lock.lock().await;
+        let _guard = self.lock.lock().await;
         println!("{}", message);
     }
 
     pub async fn prompt(&self, prompt: &str) -> String {
-        let _ = self.lock.lock().await;
+        let _guard = self.lock.lock().await;
         print!("{}", prompt);
         io::stdout().flush().unwrap();
 
