@@ -55,7 +55,7 @@ pub async fn create_path(path: &Path, uid: u32, gid: u32) -> Result<()> {
     let confirmation = !settings().add_path_confirmation
         || get_confirmation(
             format!(
-                "The path {}, does not exist. Would you like to do this?",
+                "The path {}, does not exist. Would you to create it?",
                 path.display(),
             )
             .as_str(),

@@ -7,7 +7,7 @@ mod utils;
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::{collections::HashMap, env, os::unix::fs::MetadataExt};
+use std::{collections::HashMap, env, os::unix::fs::MetadataExt, path::Path};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct Entry {
@@ -119,7 +119,10 @@ async fn main() {
             .iter()
             .filter(|f| !files.contains_key(*f) && !symlinks.contains_key(*f))
         {
-            utils::remove_path(std::path::Path::new(path)).await?;
+            // Only remove the path, if it still exists
+            if Path::new(path).exists() {
+                utils::remove_path(std::path::Path::new(path)).await?;
+            }
         }
 
         // Store the file paths we will have made, if the main body is successful
