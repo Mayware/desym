@@ -7,7 +7,11 @@ mod utils;
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::{collections::HashMap, env, os::unix::fs::MetadataExt, path::Path};
+use std::{
+    collections::HashMap,
+    os::unix::fs::MetadataExt,
+    path::Path,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct Entry {
@@ -104,12 +108,14 @@ impl Entry {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let result = async {
-        let arg = env::args().nth(1).expect("Failed to get json arg");
+        let path = std::env::args()
+            .nth(1)
+            .expect("Configuration path not given");
         let Config {
             mut files,
             mut symlinks,
             mut settings,
-        } = serde_json::from_str(&arg).expect("Failed to parse config");
+        } = serde_json::from_str(&std::fs::read_to_string(path)?).expect("Failed to parse config");
         let mut cache = cache::read(settings.cache_path.take()).await?;
         utils::init_settings(settings);
 
