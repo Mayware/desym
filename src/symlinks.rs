@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::os::unix;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tokio::task::JoinSet;
 
@@ -8,47 +7,11 @@ use crate::utils::print_suc;
 use crate::{Entry, utils};
 use anyhow::{Result, anyhow};
 
-async fn create_symlink(symlink_path: &Path, entry: Entry) -> Result<()> {
-    match unix::fs::symlink(entry.source.clone(), symlink_path) {
-        Ok(()) => {
-            // Apparently the symlink file permissions don't matter, on unixes apart from MacOS
-            // but can't hurt to be consistent
-            // I changed chmod from nofollow, to the regular one, since nofollow was erroring for
-            // a reason I couldn't find out - "must specify at least one of read, write, or append
-            // access", although I was chmodding it. Anyways, that means that we'd be chmodding the
-            // original file, and not the symlink, and hence the vault
-            // utils::raw_chown(symlink_path, entry.uid, entry.gid).await?;
-            // utils::raw_chmod(symlink_path, entry.mode).await?;
-
-            print_suc(
-                format!(
-                    "Created symlink: {} -> {}",
-                    symlink_path.display(),
-                    entry.source
-                )
-                .as_str(),
-            )
-            .await;
-
-            Ok(())
-        }
-        Err(err) => {
-            return Err(anyhow!(format!(
-                "Failed, could not create symlink: {} -> {}, Err: {}",
-                symlink_path.display(),
-                entry.source,
-                err
-            )));
-        }
-    }
-}
-
 pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
     // Please note, symlink permissions don't matter - I initially implemented them
     // thinking linux would just ignore it, but no, it errors instead, so you'll see vaulted
     // associated code pieces, but entry is still taken for one glorious day in the future
     // where it may work.
-
     let mut set: JoinSet<Result<()>> = JoinSet::new();
 
     for (symlink_path, entry) in symlinks {
@@ -56,34 +19,31 @@ pub async fn process(symlinks: HashMap<String, Entry>) -> Result<()> {
             let symlink_path = Path::new(&symlink_path);
             let base_path = Path::new(&entry.source);
 
-            if let Some(metadata) =
-                utils::get_matching_metadata(&symlink_path, entry.uid, entry.gid).await?
-            {
+            let metadata = utils::get_metadata(symlink_path).await?;
+            if let Some(metadata) = &metadata {
                 if metadata.is_symlink() {
                     let link_target = tokio::fs::read_link(symlink_path).await?;
-
-                    // Expand, if it was relative. Although, relative links should never really
-                    // be done through us, since we don't handle it consistently (for example,
-                    // if the programs CWD changes, we'd be pointing at a different directory at
-                    // creation time
-                    let resolved_target = if link_target.is_absolute() {
-                        link_target
-                    } else {
-                        symlink_path
-                            .parent()
-                            .unwrap_or(Path::new(""))
-                            .join(&link_target)
-                    };
-
                     // No-op if everything matches
-                    if resolved_target == base_path {
+                    if link_target == base_path {
                         return Ok(());
                     }
                 }
-                utils::remove_path(symlink_path).await?;
             }
 
-            create_symlink(symlink_path, entry).await?;
+            let created_paths = utils::require_parent_paths(symlink_path, entry.uid, entry.gid).await?;
+            let limbo_path = PathBuf::from(utils::get_limbo(symlink_path.to_string_lossy()));
+            match tokio::fs::symlink(entry.source.clone(), &limbo_path).await {
+                Ok(()) => {
+                    // Apparently the symlink file permissions don't matter, on unixes apart from MacOS
+                    // and it didn't even work for me
+                }
+                Err(err) => return Err(anyhow!(format!("Failed, could not create symlink: {} -> {}, Err: {}", symlink_path.display(), entry.source, err))),
+            }
+
+            let bak = utils::atomic_install(symlink_path, &limbo_path).await?;
+            created_paths.disarm();
+            print_suc(format!("Created symlink: {} -> {}", symlink_path.display(), entry.source).as_str()).await;
+            utils::handle_clobber(bak).await?;
             Ok(())
         });
     }

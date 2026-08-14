@@ -7,12 +7,11 @@ mod utils;
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    os::unix::fs::MetadataExt,
-    path::Path,
-};
+use std::{collections::HashMap, os::unix::fs::MetadataExt, path::Path, process::ExitCode};
 
+// For values that are expected, but can sometimes be omitted (like uid, gid and mode for symlinks),
+// we just use sentinel values, because otherwise with optionals we'd need to deal with pointless
+// unwrapping later in the code, the code that parses this should handle resolving defaults
 #[derive(Debug, Deserialize, JsonSchema)]
 struct Entry {
     source: String,
@@ -34,31 +33,12 @@ struct Config {
     settings: Settings,
 }
 
-// Kinda annoying pattern of default for individual fields, and a default function
-// We need to do this however because the impl Default is for Settings from nothing
-// whereas the individual fields is for JsonSchema to be able to construct it from partial
-#[derive(Debug, Deserialize, JsonSchema, Clone)]
+#[derive(Debug, Default, Deserialize, JsonSchema, Clone)]
 struct Settings {
-    #[serde(default = "default_true")]
-    add_path_confirmation: bool,
-    #[serde(default = "default_true")]
-    remove_path_confirmation: bool,
+    keep_clobbered: Option<bool>,
     cache_path: Option<String>,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            add_path_confirmation: true,
-            remove_path_confirmation: true,
-            cache_path: None,
-        }
-    }
-}
-
-fn default_true() -> bool {
-    true
-}
 fn default_max() -> u32 {
     u32::MAX
 }
@@ -73,16 +53,12 @@ impl Entry {
                     return Err(anyhow!(
                         "Failed to read metadata for resolve defaults for \n{}\nThe following fields were not specified: [{}]: {}\n{}\n{}",
                         self.source,
-                        [
-                            (self.uid == u32::MAX, "uid"),
-                            (self.gid == u32::MAX, "gid"),
-                            (self.mode == u32::MAX, "mode"),
-                        ]
-                        .iter()
-                        .filter(|(needed, _)| *needed)
-                        .map(|(_, name)| *name)
-                        .collect::<Vec<_>>()
-                        .join(", "),
+                        [("uid", self.uid), ("gid", self.gid), ("mode", self.mode),]
+                            .iter()
+                            .filter(|(_, value)| *value == u32::MAX)
+                            .map(|(name, _)| *name)
+                            .collect::<Vec<_>>()
+                            .join(", "),
                         err,
                         "Commonly, this is for when creating an arbitrary files, since it is not possible to infer existing permissions.",
                         "Please manually specify the required fields."
@@ -104,13 +80,10 @@ impl Entry {
     }
 }
 
-// Realistically we only need one real thread, more would be bloat
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> ExitCode {
     let result = async {
-        let path = std::env::args()
-            .nth(1)
-            .expect("Configuration path not given");
+        let path = std::env::args().nth(1).expect("Configuration path not given");
         let Config {
             mut files,
             mut symlinks,
@@ -120,11 +93,7 @@ async fn main() {
         utils::init_settings(settings);
 
         // Clean up no longer referenced files in the config, that we cached as having been made
-        for path in cache
-            .created_files
-            .iter()
-            .filter(|f| !files.contains_key(*f) && !symlinks.contains_key(*f))
-        {
+        for path in cache.created_files.iter().filter(|f| !files.contains_key(*f) && !symlinks.contains_key(*f)) {
             // Only remove the path, if it still exists
             if Path::new(path).exists() {
                 utils::remove_path(std::path::Path::new(path)).await?;
@@ -136,11 +105,7 @@ async fn main() {
         cache.store(keys)?;
 
         // Fill in default values for entries that were not entirely set
-        let results = files
-            .values_mut()
-            .chain(symlinks.values_mut())
-            .map(|entry| entry.resolve_defaults())
-            .collect::<Vec<_>>();
+        let results = files.values_mut().chain(symlinks.values_mut()).map(|entry| entry.resolve_defaults()).collect::<Vec<_>>();
         futures::future::try_join_all(results).await?;
 
         // Create / delete paths as necessary for each core
@@ -153,7 +118,11 @@ async fn main() {
     }
     .await;
 
-    if let Err(err) = result {
-        utils::print_real_err(&err).await;
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            utils::print_real_err(&err).await;
+            ExitCode::FAILURE
+        }
     }
 }

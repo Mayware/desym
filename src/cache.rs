@@ -41,20 +41,17 @@ pub async fn read(path: Option<String>) -> Result<Cache> {
     match serde_json::from_str::<Persistant>(&text) {
         Ok(persistant) => Ok(Cache::new(persistant.created_files, cache_path)),
         Err(err) => {
-            print_err(
-                &format!("Unable to read cache file! This may be due to a format update, or incorrect modification of the cache file: {}", err),
-            ).await;
-            let confirmation = utils::get_confirmation(
-                "Would you like to continue? The cache file will be overwritten, and updated as needed",
-            )
+            print_err(&format!(
+                "Unable to read cache file! This may be due to a format update, or incorrect modification of the cache file: {}",
+                err
+            ))
             .await;
+            let confirmation = utils::get_confirmation("Would you like to continue? The cache file will be overwritten, and updated as needed").await;
 
             if confirmation {
                 return Ok(Cache::new(Vec::new(), cache_path));
             } else {
-                return Err(anyhow!(
-                    "Unable to continue! Please rectify the cache file issue"
-                ));
+                return Err(anyhow!("Unable to continue! Please rectify the cache file issue"));
             }
         }
     }
@@ -62,9 +59,7 @@ pub async fn read(path: Option<String>) -> Result<Cache> {
 
 impl Cache {
     pub fn store(&mut self, keys: Vec<String>) -> Result<()> {
-        let persistant = Persistant {
-            created_files: keys,
-        };
+        let persistant = Persistant { created_files: keys };
 
         self.json = Some(serde_json::to_string_pretty(&persistant)?);
         Ok(())

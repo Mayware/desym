@@ -12,7 +12,6 @@ pub struct Input {
 // Recommended as per docs: https://docs.rs/tokio/latest/tokio/io/struct.Stdin.html
 impl Input {
     pub fn new() -> Self {
-
         // This background thread listens for input on the mpsc channel. The input gives a tx
         // callback we can fire, which then returns the input
         let (input_tx, mut input_rx) = mpsc::channel::<Callback>(32);
@@ -26,10 +25,7 @@ impl Input {
             }
         });
 
-        Self {
-            input_tx,
-            lock: Mutex::new(()),
-        }
+        Self { input_tx, lock: Mutex::new(()) }
     }
 
     pub async fn println(&self, message: &str) {

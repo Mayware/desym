@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, os::unix::fs::MetadataExt, path::Path};
+use std::{
+    collections::HashMap,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     Entry,
@@ -8,34 +12,14 @@ use crate::{
 use anyhow::{Result, anyhow};
 use tokio::task::JoinSet;
 
-async fn write_file(path: &Path, content: &[u8], uid: u32, gid: u32, mode: u32) -> Result<()> {
-    match fs::write(path, content) {
-        Ok(_) => {
-            utils::raw_chown(path, uid, gid).await?;
-            utils::raw_chmod(path, mode).await?;
-
-            print_suc(format!("Wrote to, Path: {}", path.display()).as_str()).await;
-            Ok(())
-        }
-        Err(err) => {
-            return Err(anyhow!(format!(
-                "Failed to write to file, Path: {}, Error: {}",
-                path.display(),
-                err
-            )));
-        }
-    }
-}
-
 pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
     let mut set: JoinSet<Result<()>> = JoinSet::new();
 
     for (file_path, entry) in files {
         set.spawn(async move {
             let file_path = Path::new(&file_path);
-            if let Some(metadata) =
-                utils::get_matching_metadata(file_path, entry.uid, entry.gid).await?
-            {
+            let metadata = utils::get_metadata(file_path).await?;
+            if let Some(metadata) = &metadata {
                 if metadata.is_file() {
                     let file_content = tokio::fs::read(file_path).await?;
 
@@ -49,11 +33,30 @@ pub async fn process(files: HashMap<String, Entry>) -> Result<()> {
                         return Ok(());
                     }
                 }
-
-                utils::remove_path(file_path).await?;
             }
 
-            write_file(file_path, entry.source.as_bytes(), entry.uid, entry.gid, entry.mode).await?;
+            let created_paths = utils::require_parent_paths(file_path, entry.uid, entry.gid).await?;
+            let limbo_path = PathBuf::from(utils::get_limbo(file_path.to_string_lossy()));
+            if let Err(err) = async {
+                // A failed write can still leave data behind, hence why it's in the async block
+                tokio::fs::write(&limbo_path, entry.source.as_bytes())
+                    .await
+                    .map_err(|err| anyhow!("Failed to write to file, Path: {}, Error: {}", limbo_path.display(), err))?;
+                utils::chown(&limbo_path, entry.uid, entry.gid).await?;
+                utils::chmod(&limbo_path, entry.mode).await
+            }
+            .await
+            {
+                match tokio::fs::remove_file(&limbo_path).await {
+                    Ok(()) => return Err(err),
+                    Err(remove_err) => return Err(anyhow!("{}, Double whammy, file potentially stuck in limbo {}: {}", err, limbo_path.display(), remove_err)),
+                }
+            }
+
+            let bak = utils::atomic_install(file_path, &limbo_path).await?;
+            created_paths.disarm();
+            print_suc(format!("Wrote to, Path: {}", file_path.display()).as_str()).await;
+            utils::handle_clobber(bak).await?;
             Ok(())
         });
     }
